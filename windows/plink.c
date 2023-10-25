@@ -74,7 +74,14 @@ static SeatPromptResult plink_get_userpass_input(Seat *seat, prompts_t *p)
         CMDLINE_GET_PASSWD_INPUT_STATE_INIT;
 
     SeatPromptResult spr;
+    bool to_server = p->to_server;
+    if(!console_antispoof_prompt) {
+        p->to_server = true;
+    }   
     spr = cmdline_get_passwd_input(p, &cmdline_state, false);
+    if(!console_antispoof_prompt) {
+        p->to_server = to_server;
+    }
     if (spr.kind == SPRK_INCOMPLETE)
         spr = console_get_userpass_input(p);
     return spr;
