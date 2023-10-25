@@ -12,6 +12,7 @@
 #include "storage.h"
 #include "tree234.h"
 #include "security-api.h"
+#include "portfwd.h"
 
 void cmdline_error(const char *fmt, ...)
 {
@@ -153,6 +154,8 @@ static void usage(void)
     printf("            use 'command' as local proxy\n");
     printf("  -sercfg configuration-string (e.g. 19200,8,n,1,X)\n");
     printf("            Specify the serial configuration (serial only)\n");
+    printf("  -portfwd idle_timeout\n");
+    printf("            use port forwarding.\n");
     printf("The following options only apply to SSH connections:\n");
     printf("  -pwfile file   login with password read from specified file\n");
     printf("  -D [listen-IP:]listen-port\n");
@@ -293,12 +296,23 @@ static bool plink_mainloop_post(void *vctx, size_t extra_handle_index)
     return true;
 }
 
+static bool portfwd_connected(Backend *be)
+{
+    return false;
+}
+
+const BackendVtable portfwd_backend = {
+    .connected = portfwd_connected,
+};
+
 int main(int argc, char **argv)
 {
     int exitcode;
     bool errors;
     bool use_subsystem = false;
     bool just_test_share_exists = false;
+    bool portfwd = false;
+    unsigned long idle_timeout = 0;    
     enum TriState sanitise_stdout = AUTO, sanitise_stderr = AUTO;
     const struct BackendVtable *vt;
 
@@ -374,6 +388,15 @@ int main(int argc, char **argv)
             sanitise_stderr = FORCE_OFF;
         } else if (!strcmp(p, "-no-antispoof")) {
             console_antispoof_prompt = false;
+        } else if (!strcmp(p, "-portfwd")) {
+            portfwd = true;
+            if(argc > 1) {
+                --argc;
+                idle_timeout = atoi(*++argv)*TICKSPERSEC;
+            } else {
+                fprintf(stderr, "plinkx: broken option \"%s\"\n", p);
+                errors = true;
+            }
         } else if (*p != '-') {
             strbuf *cmdbuf = strbuf_new();
 
@@ -400,7 +423,7 @@ int main(int argc, char **argv)
     if (errors)
         return 1;
 
-    if (!cmdline_host_ok(conf)) {
+    if (!cmdline_host_ok(conf) && !portfwd) {
         usage();
     }
 
@@ -527,6 +550,22 @@ int main(int argc, char **argv)
      * Start up the connection.
      */
     winselcli_setup();                 /* ensure event object exists */
+
+    if(portfwd) {
+        Backend backend_stub;
+        backend_stub.vt = &portfwd_backend;
+        backend = &backend_stub;
+
+        portfwd_state *ps = portfwd_new(plink_seat, logctx, conf, idle_timeout);
+
+        portfwd_start(ps);
+
+        cli_main_loop(cliloop_null_pre, cliloop_null_post, NULL);
+        portfwd_free(ps);
+        cleanup_exit(0);
+        return 0;
+    }
+
     {
         char *error, *realhost;
         /* nodelay is only useful if stdin is a character device (console) */

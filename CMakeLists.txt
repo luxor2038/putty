@@ -109,6 +109,7 @@ add_executable(bidi_test
 target_link_libraries(bidi_test guiterminal utils ${platform_libraries})
 
 add_executable(plink
+  portfwd.c
   ${platform}/plink.c)
 # Note: if we ever port Plink to a platform where we can't implement a
 # serial backend, this be_list command will need to become platform-
