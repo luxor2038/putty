@@ -971,6 +971,9 @@ static char *ssh_init(const BackendVtable *vt, Seat *seat,
     ssh->backend.vt = vt;
     ssh->interactor.vt = &Ssh_interactorvt;
     ssh->backend.interactor = &ssh->interactor;
+    if(*backend_handle && (*backend_handle)->interactor) {
+        interactor_set_child((*backend_handle)->interactor, &ssh->interactor);
+    }
     *backend_handle = &ssh->backend;
 
     ssh->bare_connection = (vt->protocol == PROT_SSHCONN);

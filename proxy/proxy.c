@@ -228,10 +228,11 @@ static void proxy_negotiate(ProxySocket *ps)
     if (ps->pn->reconnect) {
         sk_close(ps->sub_socket);
         SockAddr *proxy_addr = sk_addr_dup(ps->proxy_addr);
-        ps->sub_socket = sk_new(proxy_addr, ps->proxy_port,
+        ps->sub_socket = new_connection(proxy_addr, ps->proxy_host, 
+                                ps->proxy_port,
                                 ps->proxy_privport, ps->proxy_oobinline,
                                 ps->proxy_nodelay, ps->proxy_keepalive,
-                                &ps->plugimpl);
+                                &ps->plugimpl, ps->conf, &ps->interactor);
         ps->pn->reconnect = false;
         /* If the negotiator has asked us to reconnect, they are
          * expecting that on the next call their input queue will
@@ -492,12 +493,267 @@ void proxy_spr_abort(ProxyNegotiator *pn, SeatPromptResult spr)
     }
 }
 
+typedef struct proxy_item {
+    int type;
+    char * host;
+    int port;
+    char * username;
+    char *password;
+    char *keyfile;
+    bool ssh_connection_sharing;
+    void * next;
+} proxy_item;
+
+static char proxy_buffer[4096];
+
+static proxy_item *first_proxy;
+
+static void free_proxy(void) 
+{
+    memset(proxy_buffer, 0, sizeof(proxy_buffer));
+
+    proxy_item * proxy = first_proxy;
+    proxy_item * next_proxy;
+    while(proxy) {
+        next_proxy = proxy->next;
+        memset(proxy, 0 ,sizeof(*proxy));
+        sfree(proxy);
+        proxy = next_proxy;
+    }
+}
+
+static bool isquote(char c) 
+{
+    return c == '\"' || c == '\'';
+}
+
+static char * get_value(char ** pstr, char * end)
+{
+    char * str = *pstr;
+    char * value = NULL;
+    char quote = 0;
+
+    if(str == end) {
+        return NULL;
+    }
+
+    while(*str && isspace(*str)) {
+        str++;
+    }
+
+    if(!*str) {
+        *pstr = str;
+        return NULL;
+    }
+
+    if(isquote(*str)) {
+        quote = *str;
+        str++;
+    }
+    value = str;
+
+    if(!*str) {
+        *pstr = str;
+        return NULL;
+    }
+
+    while(*str) {
+        if(quote) {
+            if(*str == quote) {
+                if(*(str+1) != quote) {
+                    *str = 0;
+                    *pstr = str + 1;
+                    return dupstr(value);
+                }
+
+                memmove(str, str + 1, strlen(str));
+            }
+        } else if(isspace(*str)) {
+            *str = 0;
+            *pstr = str + 1;
+            return dupstr(value);
+        }
+        str++;
+    }
+
+    *pstr = str;
+    return dupstr(value);
+}
+
+static bool parse_proxy_line(proxy_item * proxy, char * proxy_line, char * proxy_line_end)
+{
+    char * value = get_value(&proxy_line, proxy_line_end);
+    if(!value) {
+        return false;
+    }
+
+    if(!strcmp(value, "socks4")) {
+        proxy->type = PROXY_SOCKS4;
+    } else if(!strcmp(value, "socks5")) {
+        proxy->type = PROXY_SOCKS5;
+    } else if(!strcmp(value, "http")) {
+        proxy->type = PROXY_HTTP;
+    } else if(!strcmp(value, "ssh")) {
+        proxy->type = PROXY_SSH_TCPIP;
+    } else if(!strcmp(value, "sshs")) {
+        proxy->type = PROXY_SSH_TCPIP;
+        proxy->ssh_connection_sharing = true;
+    }
+
+    if(!proxy->type) {
+        return false;
+    }
+
+    proxy->host = get_value(&proxy_line, proxy_line_end);
+    if(!proxy->host) {
+        return false;
+    }
+
+    value = get_value(&proxy_line, proxy_line_end);
+    if(!value) {
+        return false;
+    }
+    proxy->port = atoi(value);
+
+    if(proxy->port == 0 || proxy->port > 65535) {
+        return false;
+    }
+
+    proxy->username = get_value(&proxy_line, proxy_line_end);
+    if(!proxy->username) {
+        return proxy->type != PROXY_SSH_TCPIP;
+    }
+
+    proxy->password = get_value(&proxy_line, proxy_line_end);
+    if(!proxy->password) {
+        return proxy->type != PROXY_SSH_TCPIP;
+    }
+
+    proxy->keyfile = get_value(&proxy_line, proxy_line_end);
+
+    return true;
+}
+
+static int parse_proxychain(Interactor *itr, Plug *plug, Conf *conf, int type)
+{
+    proxy_item * proxy;
+
+    Interactor *itr_top = itr;
+    while (itr_top->parent) {
+        itr_top = itr_top->parent;
+    }
+
+    const char * proxy_cmd;
+    if(type == PROXY_CMD) {
+        proxy_cmd = conf_get_str(conf, CONF_proxy_telnet_command);
+        if(strncmp(proxy_cmd, "proxychain ", sizeof("proxychain ")-1)) {
+            return type;
+        }
+
+        if(itr_top != itr) {
+            return PROXY_FUZZ;
+        }
+    } else if(itr_top==itr) {
+        if(!first_proxy) {
+            return type;
+        }
+    } else if(!first_proxy){
+        return PROXY_NONE;
+    }
+
+    if(!first_proxy) {
+        const char * filename = proxy_cmd + sizeof("proxychain ")-1;
+        Filename *fn = filename_from_str(filename);
+        FILE *fp = f_open(fn, "r", false);
+        filename_free(fn);
+        if(!fp) {
+            char *logmsg = dupprintf("failed to open \'%s\'", filename);
+            plug_log(plug, PLUGLOG_PROXY_MSG, NULL, 0, logmsg, 0);
+            sfree(logmsg);
+            return PROXY_FUZZ;
+        }
+
+        int size = fread(proxy_buffer, 1 , sizeof(proxy_buffer)-1, fp);
+
+        fclose(fp);
+
+        proxy_buffer[size] = 0;
+
+        proxy_item * last_proxy = NULL;
+        char * proxy_line = proxy_buffer;
+
+        while(proxy_line && *proxy_line) {
+            char * next_proxy_line = host_strchr(proxy_line, '\n');
+            if(next_proxy_line) {
+                *next_proxy_line = 0;
+                next_proxy_line++;
+            }
+
+            proxy = snew(proxy_item);
+            memset(proxy, 0, sizeof(*proxy));
+
+            char * proxy_line0 = dupstr(proxy_line);
+
+            if(!parse_proxy_line(proxy, proxy_line, next_proxy_line - 1)) {
+                char *logmsg = dupprintf("wrong proxy line \'%s\'", proxy_line0);
+                plug_log(plug, PLUGLOG_PROXY_MSG, NULL, 0, logmsg, 0);
+                sfree(logmsg);
+                sfree(proxy_line0);
+                sfree(proxy);
+                free_proxy();
+                return PROXY_FUZZ;
+            }
+
+            sfree(proxy_line0);
+            proxy_line = next_proxy_line;
+
+            if(!first_proxy) {
+                first_proxy = proxy;
+            }
+
+            if(last_proxy) {
+                last_proxy->next = proxy;
+            }
+            last_proxy = proxy;
+        }
+
+        memset(proxy_buffer, 0, sizeof(proxy_buffer));
+    }
+
+    if(itr_top==itr) {
+        itr_top->opaque = first_proxy;
+    }
+
+    proxy = itr_top->opaque;
+    if(!proxy) {
+        conf_set_int(conf, CONF_proxy_type, PROXY_NONE);
+        conf_set_str(conf, CONF_proxy_password, "");
+        return PROXY_NONE;
+    }
+
+    type = proxy->type;
+    conf_set_int(conf, CONF_proxy_type, type);
+    conf_set_str(conf, CONF_proxy_host, proxy->host);
+    conf_set_int(conf, CONF_proxy_port, proxy->port);
+    conf_set_str(conf, CONF_proxy_username, proxy->username);
+    conf_set_str(conf, CONF_proxy_password, proxy->password);
+    Filename *fn = filename_from_str(proxy->keyfile);
+    conf_set_filename(conf, CONF_proxy_keyfile, fn);
+    filename_free(fn);
+    conf_set_bool(conf, CONF_proxy_ssh_connection_sharing, proxy->ssh_connection_sharing);
+        
+    itr_top->opaque = proxy->next;
+    return type;
+}
+
 Socket *new_connection(SockAddr *addr, const char *hostname,
                        int port, bool privport,
                        bool oobinline, bool nodelay, bool keepalive,
                        Plug *plug, Conf *conf, Interactor *itr)
 {
     int type = conf_get_int(conf, CONF_proxy_type);
+
+    type = parse_proxychain(itr, plug, conf, type);
 
     if (type != PROXY_NONE &&
         proxy_for_destination(addr, hostname, port, conf))
@@ -595,15 +851,16 @@ Socket *new_connection(SockAddr *addr, const char *hostname,
         }
 
         /* look-up proxy */
-        proxy_addr = sk_namelookup(conf_get_str(conf, CONF_proxy_host),
-                                   &proxy_canonical_name,
-                                   conf_get_int(conf, CONF_addressfamily));
+        proxy_addr = name_lookup(conf_get_str(conf, CONF_proxy_host), 
+                                   conf_get_int(conf, CONF_proxy_port),
+                                   &proxy_canonical_name, conf,
+                                   conf_get_int(conf, CONF_addressfamily),
+                                   NULL, NULL);
         if (sk_addr_error(proxy_addr) != NULL) {
             ps->error = "Proxy error: Unable to resolve proxy host name";
             sk_addr_free(proxy_addr);
             return &ps->sock;
         }
-        sfree(proxy_canonical_name);
 
         {
             char addrbuf[256], *logmsg;
@@ -619,15 +876,17 @@ Socket *new_connection(SockAddr *addr, const char *hostname,
          * connected to our proxy server and port.
          */
         ps->proxy_addr = sk_addr_dup(proxy_addr);
+        ps->proxy_host = proxy_canonical_name;
         ps->proxy_port = conf_get_int(conf, CONF_proxy_port);
         ps->proxy_privport = privport;
         ps->proxy_oobinline = oobinline;
         ps->proxy_nodelay = nodelay;
         ps->proxy_keepalive = keepalive;
-        ps->sub_socket = sk_new(proxy_addr, ps->proxy_port,
+        ps->sub_socket = new_connection(proxy_addr, ps->proxy_host, 
+                                ps->proxy_port,
                                 ps->proxy_privport, ps->proxy_oobinline,
                                 ps->proxy_nodelay, ps->proxy_keepalive,
-                                &ps->plugimpl);
+                                &ps->plugimpl, ps->conf, &ps->interactor);
         if (sk_socket_error(ps->sub_socket) != NULL)
             return &ps->sock;
 

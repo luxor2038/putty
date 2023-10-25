@@ -24,6 +24,7 @@ struct ProxySocket {
 
     /* Parameters needed to make further connections to the proxy */
     SockAddr *proxy_addr;
+    char * proxy_host;
     int proxy_port;
     bool proxy_privport, proxy_oobinline, proxy_nodelay, proxy_keepalive;
 

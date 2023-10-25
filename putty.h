@@ -681,6 +681,8 @@ struct Interactor {
      * If parent != NULL, this field is not used.
      */
     Interactor *last_to_talk;
+
+    void * opaque;
 };
 
 struct InteractorVtable {
@@ -1814,6 +1816,8 @@ NORETURN void cleanup_exit(int);
     X(INT, NONE, proxy_port) \
     X(STR, NONE, proxy_username) \
     X(STR, NONE, proxy_password) \
+    X(FILENAME, NONE, proxy_keyfile) \
+    X(BOOL, NONE, proxy_ssh_connection_sharing) \
     X(STR, NONE, proxy_telnet_command) \
     X(INT, NONE, proxy_log_to_term) /* FORCE_ON, FORCE_OFF, AUTO */ \
     /* SSH options */ \

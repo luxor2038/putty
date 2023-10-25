@@ -244,8 +244,11 @@ static void sshproxy_notify_session_started(Seat *seat)
 {
     SshProxy *sp = container_of(seat, SshProxy, seat);
 
-    if (sp->clientseat)
+    if (sp->clientseat) {
         interactor_return_seat(sp->clientitr);
+        sp->clientitr = NULL;
+        sp->clientseat = NULL;
+    }
     sp->conn_established = true;
 
     plug_log(sp->plug, PLUGLOG_CONNECT_SUCCESS, sp->addr, sp->port, NULL, 0);
@@ -318,8 +321,11 @@ static void sshproxy_sent(Seat *seat, size_t new_bufsize)
 
 static void sshproxy_send_close(SshProxy *sp)
 {
-    if (sp->clientseat)
+    if (sp->clientseat) {
         interactor_return_seat(sp->clientitr);
+        sp->clientitr = NULL;
+        sp->clientseat = NULL;
+    }
 
     if (!sp->conn_established)
         plug_log(sp->plug, PLUGLOG_CONNECT_FAILED, sp->addr, sp->port,
@@ -613,6 +619,12 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
         sp->got_proxy_password = true;
     }
 
+    conf_set_filename(sp->conf, CONF_keyfile,
+                    conf_get_filename(clientconf, CONF_proxy_keyfile));
+
+    conf_set_bool(sp->conf, CONF_ssh_connection_sharing,
+                    conf_get_bool(clientconf, CONF_proxy_ssh_connection_sharing));
+
     const struct BackendVtable *backvt = backend_vt_from_proto(
         conf_get_int(sp->conf, CONF_protocol));
 
@@ -710,6 +722,9 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
     sp->logctx = log_init(&sp->logpolicy, sp->conf);
 
     char *error, *realhost;
+    Backend backend;
+    backend.interactor = clientitr; 
+    sp->backend = &backend;
     error = backend_init(backvt, &sp->seat, &sp->backend, sp->logctx, sp->conf,
                          conf_get_str(sp->conf, CONF_host),
                          conf_get_int(sp->conf, CONF_port),
@@ -729,7 +744,6 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
      */
     if (clientitr) {
         sp->clientitr = clientitr;
-        interactor_set_child(sp->clientitr, sp->backend->interactor);
 
         sp->clientlp = interactor_logpolicy(clientitr);
 
