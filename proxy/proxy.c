@@ -520,6 +520,7 @@ Socket *new_connection(SockAddr *addr, const char *hostname,
             return sret;
 
         ps = snew(ProxySocket);
+        memset(ps, 0, sizeof(*ps));
         ps->sock.vt = &ProxySocket_sockvt;
         ps->plugimpl.vt = &ProxySocket_plugvt;
         ps->interactor.vt = &ProxySocket_interactorvt;
@@ -528,16 +529,11 @@ Socket *new_connection(SockAddr *addr, const char *hostname,
         ps->remote_addr = addr;       /* will need to be freed on close */
         ps->remote_port = port;
 
-        ps->error = NULL;
-        ps->pending_eof = false;
-        ps->freeze = false;
-
         bufchain_init(&ps->pending_input_data);
         bufchain_init(&ps->pending_output_data);
         bufchain_init(&ps->pending_oob_output_data);
         bufchain_init(&ps->output_from_negotiator);
 
-        ps->sub_socket = NULL;
 
         /*
          * If we've been given an Interactor by the caller, set ourselves
