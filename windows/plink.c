@@ -388,6 +388,8 @@ int main(int argc, char **argv)
             sanitise_stderr = FORCE_OFF;
         } else if (!strcmp(p, "-no-antispoof")) {
             console_antispoof_prompt = false;
+        } else if (!strcmp(p, "-proxy-localhost")) {
+            conf_set_bool(conf, CONF_even_proxy_localhost, true);
         } else if (!strcmp(p, "-portfwd")) {
             portfwd = true;
             if(argc > 1) {
