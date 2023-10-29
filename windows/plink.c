@@ -30,6 +30,11 @@ static StripCtrlChars *stdout_scc, *stderr_scc;
 static BinarySink *stdout_bs, *stderr_bs;
 static DWORD orig_console_mode;
 
+static bool auto_restart;
+static bool auto_restarting;
+static cmdline_get_passwd_input_state cmdline_get_passwd_state;
+
+static Ldisc *ldisc;
 static Backend *backend;
 static LogContext *logctx;
 static Conf *conf;
@@ -69,17 +74,12 @@ static bool plink_eof(Seat *seat)
 
 static SeatPromptResult plink_get_userpass_input(Seat *seat, prompts_t *p)
 {
-    /* Plink doesn't support Restart Session, so we can just have a
-     * single static cmdline_get_passwd_input_state that's never reset */
-    static cmdline_get_passwd_input_state cmdline_state =
-        CMDLINE_GET_PASSWD_INPUT_STATE_INIT;
-
     SeatPromptResult spr;
     bool to_server = p->to_server;
     if(!console_antispoof_prompt) {
         p->to_server = true;
     }   
-    spr = cmdline_get_passwd_input(p, &cmdline_state, false);
+    spr = cmdline_get_passwd_input(p, &cmdline_get_passwd_state, auto_restart);
     if(!console_antispoof_prompt) {
         p->to_server = to_server;
     }
@@ -95,6 +95,8 @@ static bool plink_seat_interactive(Seat *seat)
             !*conf_get_str(conf, CONF_ssh_nc_host));
 }
 
+static void plink_connection_fatal(Seat *seat, const char *msg);
+
 static const SeatVtable plink_seat_vt = {
     .output = plink_output,
     .eof = plink_eof,
@@ -104,7 +106,7 @@ static const SeatVtable plink_seat_vt = {
     .notify_session_started = nullseat_notify_session_started,
     .notify_remote_exit = nullseat_notify_remote_exit,
     .notify_remote_disconnect = nullseat_notify_remote_disconnect,
-    .connection_fatal = console_connection_fatal,
+    .connection_fatal = plink_connection_fatal,
     .update_specials_menu = nullseat_update_specials_menu,
     .get_ttymode = nullseat_get_ttymode,
     .set_busy_status = nullseat_set_busy_status,
@@ -289,11 +291,71 @@ static bool plink_mainloop_post(void *vctx, size_t extra_handle_index)
     if (sending)
         handle_unthrottle(stdin_handle, backend_sendbuffer(backend));
 
-    if (!backend_connected(backend) &&
+    if (!auto_restarting && !backend_connected(backend) &&
         handle_backlog(stdout_handle) + handle_backlog(stderr_handle) == 0)
         return false; /* we closed the connection */
 
     return true;
+}
+
+static void close_session(void *ignored_context);
+
+static void start_backend(void)
+{
+    const BackendVtable * vt;
+    char *error, *realhost;
+
+    /* nodelay is only useful if stdin is a character device (console) */
+    bool nodelay = conf_get_bool(conf, CONF_tcp_nodelay) &&
+        (GetFileType(GetStdHandle(STD_INPUT_HANDLE)) == FILE_TYPE_CHAR);
+
+    auto_restarting = false;
+    cmdline_get_passwd_state = cmdline_get_passwd_input_state_new;
+
+    vt = backend_vt_from_proto(conf_get_int(conf, CONF_protocol));
+
+    error = backend_init(vt, plink_seat, &backend, logctx, conf,
+                            conf_get_str(conf, CONF_host),
+                            conf_get_int(conf, CONF_port),
+                            &realhost, nodelay,
+                            conf_get_bool(conf, CONF_tcp_keepalives));
+    if (error) {
+        fprintf(stderr, "Unable to open connection:\n%s", error);
+        sfree(error);
+        if (!auto_restart) {
+            cleanup_exit(1);
+        }
+        auto_restarting = true;
+        queue_toplevel_callback(close_session, NULL);
+        return;
+    }
+    ldisc = ldisc_create(conf, NULL, backend, plink_seat);
+    sfree(realhost);
+}
+
+static void close_session(void *ignored_context)
+{
+    if (ldisc) {
+        ldisc_free(ldisc);
+        ldisc = NULL;
+    }
+    if (backend) {
+        backend_free(backend);
+        backend = NULL;
+    }
+
+    start_backend();
+}
+
+static void plink_connection_fatal(Seat *seat, const char *msg)
+{
+    console_print_error_msg("FATAL ERROR", msg);
+    if (!auto_restart)
+        cleanup_exit(1);
+    else {
+        auto_restarting = true;
+        queue_toplevel_callback(close_session, NULL);
+    }
 }
 
 static bool portfwd_connected(Backend *be)
@@ -390,6 +452,8 @@ int main(int argc, char **argv)
             console_antispoof_prompt = false;
         } else if (!strcmp(p, "-proxy-localhost")) {
             conf_set_bool(conf, CONF_even_proxy_localhost, true);
+        } else if (!strcmp(p, "-auto-restart")) {
+            auto_restart = true;
         } else if (!strcmp(p, "-portfwd")) {
             portfwd = true;
             if(argc > 1) {
@@ -568,25 +632,7 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    {
-        char *error, *realhost;
-        /* nodelay is only useful if stdin is a character device (console) */
-        bool nodelay = conf_get_bool(conf, CONF_tcp_nodelay) &&
-            (GetFileType(GetStdHandle(STD_INPUT_HANDLE)) == FILE_TYPE_CHAR);
-
-        error = backend_init(vt, plink_seat, &backend, logctx, conf,
-                             conf_get_str(conf, CONF_host),
-                             conf_get_int(conf, CONF_port),
-                             &realhost, nodelay,
-                             conf_get_bool(conf, CONF_tcp_keepalives));
-        if (error) {
-            fprintf(stderr, "Unable to open connection:\n%s", error);
-            sfree(error);
-            return 1;
-        }
-        ldisc_create(conf, NULL, backend, plink_seat);
-        sfree(realhost);
-    }
+    start_backend();
 
     main_thread_id = GetCurrentThreadId();
 
