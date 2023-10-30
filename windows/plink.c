@@ -452,6 +452,8 @@ int main(int argc, char **argv)
             console_antispoof_prompt = false;
         } else if (!strcmp(p, "-proxy-localhost")) {
             conf_set_bool(conf, CONF_even_proxy_localhost, true);
+        } else if (!strcmp(p, "-localport-acceptall")) {
+            conf_set_bool(conf, CONF_lport_acceptall, true);
         } else if (!strcmp(p, "-auto-restart")) {
             auto_restart = true;
         } else if (!strcmp(p, "-portfwd")) {
