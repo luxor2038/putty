@@ -622,13 +622,14 @@ static bool parse_proxy_line(proxy_item * proxy, char * proxy_line, char * proxy
 
     proxy->username = get_value(&proxy_line, proxy_line_end);
     if(!proxy->username) {
-        proxy->username = "";
+        proxy->username = dupstr("");
+        proxy->password = dupstr("");
         return proxy->type != PROXY_SSH_TCPIP;
     }
 
     proxy->password = get_value(&proxy_line, proxy_line_end);
     if(!proxy->password) {
-        proxy->password = "";
+        proxy->password = dupstr("");
         return proxy->type != PROXY_SSH_TCPIP;
     }
 
