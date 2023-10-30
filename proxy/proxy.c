@@ -101,6 +101,7 @@ static void sk_proxy_close (Socket *s)
     sk_close(ps->sub_socket);
     sk_addr_free(ps->proxy_addr);
     sk_addr_free(ps->remote_addr);
+    sfree(ps->proxy_host);
     proxy_negotiator_cleanup(ps);
     bufchain_clear(&ps->output_from_negotiator);
     conf_free(ps->conf);
