@@ -228,6 +228,13 @@ static void proxy_telnet_process_queue(ProxyNegotiator *pn)
 
     crBegin(s->crLine);
 
+    if(pn->itr) {
+        Seat *seat = interactor_get_seat(pn->itr);
+        if(!is_tempseat(seat)) {
+            interactor_announce(pn->itr);
+        }
+    }
+
     s->conf = conf_copy(pn->ps->conf);
 
     /*

@@ -80,6 +80,13 @@ static void proxy_socks5_process_queue(ProxyNegotiator *pn)
 
     crBegin(s->crLine);
 
+    if(pn->itr) {
+        Seat *seat = interactor_get_seat(pn->itr);
+        if(!is_tempseat(seat)) {
+            interactor_announce(pn->itr);
+        }
+    }
+
     /*
      * SOCKS 5 initial client packet:
      *

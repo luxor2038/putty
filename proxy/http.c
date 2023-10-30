@@ -385,6 +385,13 @@ static void proxy_http_process_queue(ProxyNegotiator *pn)
 
     crBegin(s->crLine);
 
+    if(pn->itr) {
+        Seat *seat = interactor_get_seat(pn->itr);
+        if(!is_tempseat(seat)) {
+            interactor_announce(pn->itr);
+        }
+    }
+
     /*
      * Initialise our username and password strbufs from the Conf.
      */

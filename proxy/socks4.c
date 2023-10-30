@@ -33,6 +33,13 @@ static void proxy_socks4_process_queue(ProxyNegotiator *pn)
 
     crBegin(s->crLine);
 
+    if(pn->itr) {
+        Seat *seat = interactor_get_seat(pn->itr);
+        if(!is_tempseat(seat)) {
+            interactor_announce(pn->itr);
+        }
+    }
+
     {
         char hostname[512];
         bool write_hostname = false;
