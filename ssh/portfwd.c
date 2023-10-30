@@ -819,9 +819,9 @@ void portfwdmgr_config(PortFwdManager *mgr, Conf *conf)
         kp = key;
 
         address_family = 'A';
-        if(address_family == ADDRTYPE_IPV4) {
+        if(addressfamily == ADDRTYPE_IPV4) {
             address_family = '4';
-        } else if(address_family == ADDRTYPE_IPV6) {
+        } else if(addressfamily == ADDRTYPE_IPV6) {
             address_family = '6';
         }
 
