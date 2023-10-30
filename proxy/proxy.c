@@ -511,13 +511,13 @@ static proxy_item *first_proxy;
 
 static void free_proxy(void) 
 {
-    memset(proxy_buffer, 0, sizeof(proxy_buffer));
+    smemclr(proxy_buffer, sizeof(proxy_buffer));
 
     proxy_item * proxy = first_proxy;
     proxy_item * next_proxy;
     while(proxy) {
         next_proxy = proxy->next;
-        memset(proxy, 0 ,sizeof(*proxy));
+        smemclr(proxy, sizeof(*proxy));
         sfree(proxy);
         proxy = next_proxy;
     }
@@ -721,7 +721,7 @@ static int parse_proxychain(Interactor *itr, Plug *plug, Conf **pconf, int type)
             last_proxy = proxy;
         }
 
-        memset(proxy_buffer, 0, sizeof(proxy_buffer));
+        smemclr(proxy_buffer, sizeof(proxy_buffer));
     }
 
     if(itr_top==itr) {
