@@ -814,10 +814,17 @@ void portfwdmgr_config(PortFwdManager *mgr, Conf *conf)
         char address_family, type;
         int sport, dport, sserv, dserv;
         char *sports, *dports, *saddr, *host;
+        int addressfamily = conf_get_int(conf, CONF_addressfamily);
 
         kp = key;
 
         address_family = 'A';
+        if(address_family == ADDRTYPE_IPV4) {
+            address_family = '4';
+        } else if(address_family == ADDRTYPE_IPV6) {
+            address_family = '6';
+        }
+
         type = 'L';
         if (*kp == 'A' || *kp == '4' || *kp == '6')
             address_family = *kp++;
