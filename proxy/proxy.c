@@ -509,7 +509,19 @@ static char proxy_buffer[4096];
 
 static proxy_item *first_proxy;
 
-static void free_proxy(void) 
+static void free_proxy(proxy_item * proxy) 
+{
+    sfree(proxy->host);
+    sfree(proxy->username);
+    if(proxy->password) {
+        smemclr(proxy->password, strlen(proxy->password));
+        sfree(proxy->password);
+    }
+    sfree(proxy->keyfile);
+    sfree(proxy);
+}
+
+static void free_proxies(void) 
 {
     smemclr(proxy_buffer, sizeof(proxy_buffer));
 
@@ -517,8 +529,7 @@ static void free_proxy(void)
     proxy_item * next_proxy;
     while(proxy) {
         next_proxy = proxy->next;
-        smemclr(proxy, sizeof(*proxy));
-        sfree(proxy);
+        free_proxy(proxy);
         proxy = next_proxy;
     }
 }
@@ -704,8 +715,8 @@ static int parse_proxychain(Interactor *itr, Plug *plug, Conf **pconf, int type)
                 plug_log(plug, PLUGLOG_PROXY_MSG, NULL, 0, logmsg, 0);
                 sfree(logmsg);
                 sfree(proxy_line0);
-                sfree(proxy);
-                free_proxy();
+                free_proxy(proxy);
+                free_proxies();
                 return PROXY_FUZZ;
             }
 
