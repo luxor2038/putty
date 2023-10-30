@@ -441,8 +441,8 @@ static char *proxy_description(Interactor *itr)
     ProxySocket *ps = container_of(itr, ProxySocket, interactor);
     assert(ps->pn);
     return dupprintf("%s connection to %s port %d", ps->pn->vt->type,
-                     conf_get_str(ps->conf, CONF_proxy_host),
-                     conf_get_int(ps->conf, CONF_proxy_port));
+                     ps->proxy_host,
+                     ps->proxy_port);
 }
 
 static LogPolicy *proxy_logpolicy(Interactor *itr)
