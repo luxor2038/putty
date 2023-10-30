@@ -259,7 +259,7 @@ static void portfwd_connection_establish(void *vctx)
      * Make the connection.
      */
     conn->connecting = true;
-    conn->socket = new_connection(conn->addr, dupstr(conn->realhost), conn->port,
+    conn->socket = new_connection(conn->addr, conn->realhost, conn->port,
                            false, true, false, false, &conn->plug, 
                            conn->ps->conf, &conn->interactor);
 }
