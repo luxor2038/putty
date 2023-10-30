@@ -897,6 +897,15 @@ Socket *new_connection(SockAddr *addr, const char *hostname,
         return &ps->sock;
     }
 
+    if(sk_addrtype(addr) == ADDRTYPE_NAME) {
+        char *realhost;
+        char addrbuf[256];
+        sk_getaddr(addr, addrbuf, lenof(addrbuf));
+        addr = sk_namelookup(addrbuf, &realhost, 
+                             conf_get_int(conf, CONF_addressfamily));
+        sfree(realhost);
+    }
+
     /* no proxy, so just return the direct socket */
     return sk_new(addr, port, privport, oobinline, nodelay, keepalive, plug);
 }
