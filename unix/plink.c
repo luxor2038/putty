@@ -19,6 +19,7 @@
 #include "ssh.h"
 #include "storage.h"
 #include "tree234.h"
+#include "portfwd.h"
 
 #define MAX_STDIN_BACKLOG 4096
 
@@ -38,6 +39,7 @@ void cmdline_error(const char *fmt, ...)
 static bool local_tty = false; /* do we have a local tty? */
 static bool auto_restart;
 static bool auto_restarting;
+static bool portfwd;
 static cmdline_get_passwd_input_state cmdline_get_passwd_state;
 
 static Ldisc *ldisc;
@@ -538,6 +540,8 @@ static void usage(void)
     printf("            use 'command' as local proxy\n");
     printf("  -sercfg configuration-string (e.g. 19200,8,n,1,X)\n");
     printf("            Specify the serial configuration (serial only)\n");
+    printf("  -portfwd idle_timeout\n");
+    printf("            use port forwarding.\n");
     printf("The following options only apply to SSH connections:\n");
     printf("  -pwfile file   login with password read from specified file\n");
     printf("  -D [listen-IP:]listen-port\n");
@@ -675,7 +679,7 @@ static void plink_pw_check(void *vctx, pollwrapper *pw)
 static bool plink_continue(void *vctx, bool found_any_fd,
                            bool ran_any_callback)
 {
-    if (!auto_restarting && !backend_connected(backend) &&
+    if (!portfwd && !auto_restarting && !backend_connected(backend) &&
         bufchain_size(&stdout_data) == 0 && bufchain_size(&stderr_data) == 0)
         return false;                  /* terminate main loop */
     return true;
@@ -745,6 +749,26 @@ static void plink_connection_fatal(Seat *seat, const char *msg)
     }
 }
 
+static Backend backend_stub;
+
+static bool portfwd_connected(Backend *be)
+{
+    return false;
+}
+
+static int portfwd_exitcode(Backend *be)
+{
+    return 0;
+}
+
+static void portfwd_unthrottle(Backend *be, size_t backlog) { }
+
+const BackendVtable portfwd_backend = {
+    .connected = portfwd_connected,
+    .exitcode = portfwd_exitcode,
+    .unthrottle = portfwd_unthrottle,
+};
+
 int main(int argc, char **argv)
 {
     int exitcode;
@@ -752,6 +776,7 @@ int main(int argc, char **argv)
     enum TriState sanitise_stdout = AUTO, sanitise_stderr = AUTO;
     bool use_subsystem = false;
     bool just_test_share_exists = false;
+    unsigned long idle_timeout = 0;
     struct winsize size;
     const struct BackendVtable *backvt;
 
@@ -855,6 +880,15 @@ int main(int argc, char **argv)
             conf_set_bool(conf, CONF_even_proxy_localhost, true);
         } else if (!strcmp(p, "-auto-restart")) {
             auto_restart = true;
+        } else if (!strcmp(p, "-portfwd")) {
+            portfwd = true;
+            if(argc > 1) {
+                --argc;
+                idle_timeout = atoi(*++argv)*TICKSPERSEC;
+            } else {
+                fprintf(stderr, "plinkx: broken option \"%s\"\n", p);
+                errors = true;
+            }
         } else if (*p != '-') {
             strbuf *cmdbuf = strbuf_new();
 
@@ -881,7 +915,7 @@ int main(int argc, char **argv)
     if (errors)
         return 1;
 
-    if (!cmdline_host_ok(conf)) {
+    if (!cmdline_host_ok(conf) && !portfwd) {
         usage();
     }
 
@@ -1015,7 +1049,17 @@ int main(int argc, char **argv)
      * Start up the connection.
      */
     logctx = log_init(console_cli_logpolicy, conf);
-    start_backend();
+
+    if(portfwd) {
+        backend_stub.vt = &portfwd_backend;
+        backend = &backend_stub;
+
+        portfwd_state *ps = portfwd_new(plink_seat, logctx, conf, idle_timeout);
+
+        portfwd_start(ps);
+    } else {
+        start_backend();
+    }
 
     /*
      * Set up the initial console mode. We don't care if this call
