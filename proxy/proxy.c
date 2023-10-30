@@ -636,9 +636,10 @@ static bool parse_proxy_line(proxy_item * proxy, char * proxy_line, char * proxy
     return true;
 }
 
-static int parse_proxychain(Interactor *itr, Plug *plug, Conf *conf, int type)
+static int parse_proxychain(Interactor *itr, Plug *plug, Conf **pconf, int type)
 {
     proxy_item * proxy;
+    Conf *conf = *pconf;
 
     Interactor *itr_top = itr;
     while (itr_top->parent) {
@@ -728,13 +729,13 @@ static int parse_proxychain(Interactor *itr, Plug *plug, Conf *conf, int type)
 
     proxy = itr_top->opaque;
     if(!proxy) {
-        conf_set_int(conf, CONF_proxy_type, PROXY_NONE);
-        conf_set_str(conf, CONF_proxy_password, "");
         return PROXY_NONE;
     }
 
-    type = proxy->type;
-    conf_set_int(conf, CONF_proxy_type, type);
+    itr_top->opaque = proxy->next;
+    conf = conf_copy(conf);
+
+    conf_set_int(conf, CONF_proxy_type, proxy->type);
     conf_set_str(conf, CONF_proxy_host, proxy->host);
     conf_set_int(conf, CONF_proxy_port, proxy->port);
     conf_set_str(conf, CONF_proxy_username, proxy->username);
@@ -743,9 +744,9 @@ static int parse_proxychain(Interactor *itr, Plug *plug, Conf *conf, int type)
     conf_set_filename(conf, CONF_proxy_keyfile, fn);
     filename_free(fn);
     conf_set_bool(conf, CONF_proxy_ssh_connection_sharing, proxy->ssh_connection_sharing);
-        
-    itr_top->opaque = proxy->next;
-    return type;
+
+    *pconf = conf;
+    return proxy->type;
 }
 
 Socket *new_connection(SockAddr *addr, const char *hostname,
@@ -753,9 +754,10 @@ Socket *new_connection(SockAddr *addr, const char *hostname,
                        bool oobinline, bool nodelay, bool keepalive,
                        Plug *plug, Conf *conf, Interactor *itr)
 {
+    Conf *oldconf = conf;
     int type = conf_get_int(conf, CONF_proxy_type);
 
-    type = parse_proxychain(itr, plug, conf, type);
+    type = parse_proxychain(itr, plug, &conf, type);
 
     if (type != PROXY_NONE &&
         proxy_for_destination(addr, hostname, port, conf))
@@ -783,7 +785,7 @@ Socket *new_connection(SockAddr *addr, const char *hostname,
         ps->sock.vt = &ProxySocket_sockvt;
         ps->plugimpl.vt = &ProxySocket_plugvt;
         ps->interactor.vt = &ProxySocket_interactorvt;
-        ps->conf = conf_copy(conf);
+        ps->conf = (conf != oldconf) ? conf : conf_copy(conf);
         ps->plug = plug;
         ps->remote_addr = addr;       /* will need to be freed on close */
         ps->remote_port = port;
