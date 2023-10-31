@@ -654,6 +654,10 @@ static int parse_proxychain(Interactor *itr, Plug *plug, Conf **pconf, int type)
     proxy_item * proxy;
     Conf *conf = *pconf;
 
+    if(!itr) {
+        return type;
+    }
+
     Interactor *itr_top = itr;
     while (itr_top->parent) {
         itr_top = itr_top->parent;
