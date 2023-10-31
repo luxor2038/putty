@@ -633,15 +633,12 @@ static bool parse_proxy_line(proxy_item * proxy, char * proxy_line, char * proxy
 
     proxy->username = get_value(&proxy_line, proxy_line_end);
     if(!proxy->username) {
-        proxy->username = dupstr("");
-        proxy->password = dupstr("");
-        return proxy->type != PROXY_SSH_TCPIP;
+        return proxy->type != PROXY_SSH_TCPIP || proxy->ssh_connection_sharing;
     }
 
     proxy->password = get_value(&proxy_line, proxy_line_end);
     if(!proxy->password) {
-        proxy->password = dupstr("");
-        return proxy->type != PROXY_SSH_TCPIP;
+        return (proxy->type != PROXY_SSH_TCPIP) || proxy->ssh_connection_sharing;
     }
 
     proxy->keyfile = get_value(&proxy_line, proxy_line_end);
@@ -755,9 +752,9 @@ static int parse_proxychain(Interactor *itr, Plug *plug, Conf **pconf, int type)
     conf_set_int(conf, CONF_proxy_type, proxy->type);
     conf_set_str(conf, CONF_proxy_host, proxy->host);
     conf_set_int(conf, CONF_proxy_port, proxy->port);
-    conf_set_str(conf, CONF_proxy_username, proxy->username);
-    conf_set_str(conf, CONF_proxy_password, proxy->password);
-    Filename *fn = filename_from_str(proxy->keyfile);
+    conf_set_str(conf, CONF_proxy_username, proxy->username?proxy->username:"");
+    conf_set_str(conf, CONF_proxy_password, proxy->password?proxy->password:"");
+    Filename *fn = filename_from_str(proxy->keyfile?proxy->keyfile:"");
     conf_set_filename(conf, CONF_proxy_keyfile, fn);
     filename_free(fn);
     conf_set_bool(conf, CONF_proxy_ssh_connection_sharing, proxy->ssh_connection_sharing);
