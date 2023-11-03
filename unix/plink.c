@@ -882,6 +882,14 @@ int main(int argc, char **argv)
             conf_set_bool(conf, CONF_lport_acceptall, true);
         } else if (!strcmp(p, "-auto-restart")) {
             auto_restart = true;
+        } else if (!strcmp(p, "-ping-interval")) {
+            if(argc > 1) {
+                --argc;
+                conf_set_int(conf, CONF_ping_interval, atoi(*++argv));
+            } else {
+                fprintf(stderr, "plinkx: broken option \"%s\"\n", p);
+                errors = true;
+            }
         } else if (!strcmp(p, "-portfwd")) {
             portfwd = true;
             if(argc > 1) {
