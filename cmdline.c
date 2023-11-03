@@ -476,12 +476,13 @@ int cmdline_process_param(const char *p, char *value,
         conf_set_str_str(conf, CONF_ssh_manual_hostkeys, dup, "");
         sfree(dup);
     }
-    if ((!strcmp(p, "-L") || !strcmp(p, "-R") || !strcmp(p, "-D"))) {
-        char type, *q, *qq, *key, *val;
+    if ((!strncmp(p, "-L", 2) || !strncmp(p, "-R", 2) 
+         || !strncmp(p, "-D", 2))) {
+        char type[3], *q, *qq, *key, *val;
         RETURN(2);
         UNAVAILABLE_IN(TOOLTYPE_FILETRANSFER | TOOLTYPE_NONNETWORK);
         SAVEABLE(0);
-        if (strcmp(p, "-D")) {
+        if (strncmp(p, "-D", 2)) {
             /*
              * For -L or -R forwarding types:
              *
@@ -499,7 +500,9 @@ int cmdline_process_param(const char *p, char *value,
              * would require us to modify the input string!)
              */
 
-            type = p[1];               /* 'L' or 'R' */
+            type[0] = p[2];               /* '\0' or '4' or '6' */
+            type[1] = p[1];               /* 'L' or 'R' */
+            type[2] = 0;
 
             q = qq = host_strchr(value, ':');
             while (qq) {
@@ -515,7 +518,7 @@ int cmdline_process_param(const char *p, char *value,
                 return ret;
             }
 
-            key = dupprintf("%c%.*s", type, (int)(q - value), value);
+            key = dupprintf("%s%.*s", type, (int)(q - value), value);
             val = dupstr(q+1);
         } else {
             /*
@@ -527,7 +530,7 @@ int cmdline_process_param(const char *p, char *value,
              * anything in the ordinary -L case by containing no
              * colon).
              */
-            key = dupprintf("L%s", value);
+            key = dupprintf("%sL%s", p[2], value);
             val = dupstr("D");
         }
         conf_set_str_str(conf, CONF_portfwd, key, val);
