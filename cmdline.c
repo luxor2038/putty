@@ -513,7 +513,7 @@ int cmdline_process_param(const char *p, char *value,
             }
 
             if (!q) {
-                cmdline_error("-%c expects at least two colons in its"
+                cmdline_error("-%s expects at least two colons in its"
                               " argument", type);
                 return ret;
             }
@@ -530,7 +530,7 @@ int cmdline_process_param(const char *p, char *value,
              * anything in the ordinary -L case by containing no
              * colon).
              */
-            key = dupprintf("%sL%s", p[2], value);
+            key = dupprintf("%sL%s", p + 2, value);
             val = dupstr("D");
         }
         conf_set_str_str(conf, CONF_portfwd, key, val);
