@@ -85,8 +85,10 @@ static void portfwd_sc_write_eof(SshChannel *sc)
 static void portfwd_sc_initiate_close(SshChannel *sc, const char *err)
 {
     portfwd_connection *conn = container_of(sc, portfwd_connection, sc);
-    sk_close(conn->socket);
-    conn->socket = NULL;
+    if(conn->socket) {
+        sk_close(conn->socket);
+        conn->socket = NULL;
+    }
 }
 
 static void portfwd_sc_unthrottle(SshChannel *sc, size_t bufsize)
