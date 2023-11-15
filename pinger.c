@@ -7,6 +7,8 @@
 
 struct Pinger {
     int interval;
+    int keepalive_max;
+    int keepalive_count;
     bool pending;
     unsigned long when_set, next;
     Backend *backend;
@@ -19,7 +21,12 @@ static void pinger_timer(void *ctx, unsigned long now)
     Pinger *pinger = (Pinger *)ctx;
 
     if (pinger->pending && now == pinger->next) {
-        backend_special(pinger->backend, SS_PING, 0);
+        if((pinger->keepalive_max > 0) && (pinger->keepalive_count-- < 0)) {
+            Ssh *ssh = ssh_get_ssh(pinger->backend);
+            ssh_remote_error(ssh, "Timeout, server not responding");
+            return;
+        }
+        backend_special(pinger->backend, SS_PING, pinger->keepalive_max);
         pinger->pending = false;
         pinger_schedule(pinger);
     }
@@ -48,6 +55,11 @@ Pinger *pinger_new(Conf *conf, Backend *backend)
 {
     Pinger *pinger = snew(Pinger);
 
+    pinger->keepalive_max = 0;
+    if(backend->vt->protocol == PROT_SSH) {
+        pinger->keepalive_max = conf_get_int(conf, CONF_ping_keepalive_max);
+    }
+    pinger->keepalive_count = pinger->keepalive_max;
     pinger->interval = conf_get_int(conf, CONF_ping_interval);
     pinger->pending = false;
     pinger->backend = backend;
@@ -69,4 +81,9 @@ void pinger_free(Pinger *pinger)
 {
     expire_timer_context(pinger);
     sfree(pinger);
+}
+
+void pinger_reset_keepalive(Pinger *pinger)
+{
+    pinger->keepalive_count = pinger->keepalive_max;
 }

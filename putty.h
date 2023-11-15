@@ -1804,6 +1804,7 @@ NORETURN void cleanup_exit(int);
     X(INT, NONE, close_on_exit) /* FORCE_ON, FORCE_OFF, AUTO */ \
     X(BOOL, NONE, warn_on_close) \
     X(INT, NONE, ping_interval) /* in seconds */ \
+    X(INT, NONE, ping_keepalive_max) \
     X(BOOL, NONE, tcp_nodelay) \
     X(BOOL, NONE, tcp_keepalives) \
     X(STR, NONE, loghost) /* logical host being contacted, for host key check */ \
@@ -2454,6 +2455,7 @@ typedef struct Pinger Pinger;
 Pinger *pinger_new(Conf *conf, Backend *backend);
 void pinger_reconfig(Pinger *, Conf *oldconf, Conf *newconf);
 void pinger_free(Pinger *);
+void pinger_reset_keepalive(Pinger *pinger);
 
 /*
  * Exports from modules in utils.

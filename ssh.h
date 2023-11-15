@@ -410,6 +410,8 @@ void ssh_ldisc_update(Ssh *ssh);
 void ssh_check_sendok(Ssh *ssh);
 void ssh_got_fallback_cmd(Ssh *ssh);
 bool ssh_is_bare(Ssh *ssh);
+Ssh * ssh_get_ssh(Backend *be);
+void ssh_reset_pinger_keepalive(Ssh *ssh);
 
 /* Communications back to ssh.c from the BPP */
 void ssh_conn_processed_data(Ssh *ssh);

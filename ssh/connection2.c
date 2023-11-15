@@ -1613,6 +1613,12 @@ static bool ssh2_connection_get_specials(
     return toret;
 }
 
+static void ssh2_keepalive_globreq_response(struct ssh2_connection_state *s,
+                                           PktIn *pktin, void *ctx)
+{
+    ssh_reset_pinger_keepalive(s->ppl.ssh);
+}
+
 static void ssh2_connection_special_cmd(PacketProtocolLayer *ppl,
                                         SessionSpecialCode code, int arg)
 {
@@ -1621,7 +1627,14 @@ static void ssh2_connection_special_cmd(PacketProtocolLayer *ppl,
     PktOut *pktout;
 
     if (code == SS_PING || code == SS_NOP) {
-        if (!(s->ppl.remote_bugs & BUG_CHOKES_ON_SSH2_IGNORE)) {
+        if(arg > 0) {
+            pktout = ssh_bpp_new_pktout(s->ppl.bpp, SSH2_MSG_GLOBAL_REQUEST);
+            put_stringz(pktout, "keepalive@openssh.com");
+            put_bool(pktout, true);
+            pq_push(s->ppl.out_pq, pktout);
+            ssh2_queue_global_request_handler(
+                s, ssh2_keepalive_globreq_response, NULL);
+        } else if (!(s->ppl.remote_bugs & BUG_CHOKES_ON_SSH2_IGNORE)) {
             pktout = ssh_bpp_new_pktout(s->ppl.bpp, SSH2_MSG_IGNORE);
             put_stringz(pktout, "");
             pq_push(s->ppl.out_pq, pktout);

@@ -1281,6 +1281,17 @@ void ssh_got_fallback_cmd(Ssh *ssh)
     ssh->fallback_cmd = true;
 }
 
+Ssh * ssh_get_ssh(Backend *be)
+{
+    Ssh *ssh = container_of(be, Ssh, backend);
+    return ssh;
+}
+
+void ssh_reset_pinger_keepalive(Ssh *ssh)
+{
+    pinger_reset_keepalive(ssh->pinger);
+}
+
 const BackendVtable ssh_backend = {
     .init = ssh_init,
     .free = ssh_free,

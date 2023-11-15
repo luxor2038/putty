@@ -890,6 +890,14 @@ int main(int argc, char **argv)
                 fprintf(stderr, "plinkx: broken option \"%s\"\n", p);
                 errors = true;
             }
+        } else if (!strcmp(p, "-ping-keepalive-max")) {
+            if(argc > 1) {
+                --argc;
+                conf_set_int(conf, CONF_ping_keepalive_max, atoi(*++argv));
+            } else {
+                fprintf(stderr, "plinkx: broken option \"%s\"\n", p);
+                errors = true;
+            }
         } else if (!strcmp(p, "-portfwd")) {
             portfwd = true;
             if(argc > 1) {
