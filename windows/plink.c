@@ -298,7 +298,7 @@ static bool plink_mainloop_post(void *vctx, size_t extra_handle_index)
     return true;
 }
 
-static void close_session(void *ignored_context);
+static void close_session(void *ctx, unsigned long now);
 
 static void start_backend(void)
 {
@@ -326,14 +326,14 @@ static void start_backend(void)
             cleanup_exit(1);
         }
         auto_restarting = true;
-        queue_toplevel_callback(close_session, NULL);
+        schedule_timer(TICKSPERSEC, close_session, plink_seat);
         return;
     }
     ldisc = ldisc_create(conf, NULL, backend, plink_seat);
     sfree(realhost);
 }
 
-static void close_session(void *ignored_context)
+static void close_session(void *ctx, unsigned long now)
 {
     if (ldisc) {
         ldisc_free(ldisc);
@@ -354,7 +354,7 @@ static void plink_connection_fatal(Seat *seat, const char *msg)
         cleanup_exit(1);
     else {
         auto_restarting = true;
-        queue_toplevel_callback(close_session, NULL);
+        schedule_timer(TICKSPERSEC, close_session, seat);
     }
 }
 
