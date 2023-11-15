@@ -685,7 +685,7 @@ static bool plink_continue(void *vctx, bool found_any_fd,
     return true;
 }
 
-static void close_session(void *ctx, unsigned long now);
+static void close_session(void *ignored_context);
 
 static void start_backend(void)
 {
@@ -716,7 +716,7 @@ static void start_backend(void)
             cleanup_exit(1);
         }
         auto_restarting = true;
-        schedule_timer(TICKSPERSEC, close_session, plink_seat);
+        queue_toplevel_callback(close_session, NULL);
         return;
     }
 
@@ -724,7 +724,7 @@ static void start_backend(void)
     sfree(realhost);
 }
 
-static void close_session(void *ctx, unsigned long now)
+static void close_session(void *ignored_context)
 {
     if (ldisc) {
         ldisc_free(ldisc);
@@ -738,6 +738,17 @@ static void close_session(void *ctx, unsigned long now)
     start_backend();
 }
 
+static void null_timer(void *ctx, unsigned long now)
+{
+
+}
+
+static void delay_timer(void *ctx, unsigned long now)
+{
+    queue_toplevel_callback(close_session, NULL);
+    schedule_timer(1, null_timer, ctx);
+}
+
 static void plink_connection_fatal(Seat *seat, const char *msg)
 {
     console_print_error_msg("FATAL ERROR", msg);
@@ -745,7 +756,7 @@ static void plink_connection_fatal(Seat *seat, const char *msg)
         cleanup_exit(1);
     else {
         auto_restarting = true;
-        schedule_timer(TICKSPERSEC, close_session, seat);
+        schedule_timer(TICKSPERSEC, delay_timer, seat);
     }
 }
 
