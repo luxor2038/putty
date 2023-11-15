@@ -4,6 +4,9 @@
  */
 
 #include "putty.h"
+#if SSH
+#include "ssh.h"
+#endif
 
 struct Pinger {
     int interval;
@@ -21,11 +24,13 @@ static void pinger_timer(void *ctx, unsigned long now)
     Pinger *pinger = (Pinger *)ctx;
 
     if (pinger->pending && now == pinger->next) {
+#if SSH
         if((pinger->keepalive_max > 0) && (pinger->keepalive_count-- < 0)) {
             Ssh *ssh = ssh_get_ssh(pinger->backend);
             ssh_remote_error(ssh, "Timeout, server not responding");
             return;
         }
+#endif
         backend_special(pinger->backend, SS_PING, pinger->keepalive_max);
         pinger->pending = false;
         pinger_schedule(pinger);
