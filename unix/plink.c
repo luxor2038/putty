@@ -37,7 +37,7 @@ void cmdline_error(const char *fmt, ...)
 }
 
 static bool local_tty = false; /* do we have a local tty? */
-static bool auto_restart;
+static int auto_restart;
 static bool auto_restarting;
 static bool portfwd;
 static cmdline_get_passwd_input_state cmdline_get_passwd_state;
@@ -746,7 +746,7 @@ static void null_timer(void *ctx, unsigned long now)
 static void delay_timer(void *ctx, unsigned long now)
 {
     queue_toplevel_callback(close_session, NULL);
-    schedule_timer(1, null_timer, ctx);
+    schedule_timer(10, null_timer, ctx);
 }
 
 static void plink_connection_fatal(Seat *seat, const char *msg)
@@ -756,7 +756,7 @@ static void plink_connection_fatal(Seat *seat, const char *msg)
         cleanup_exit(1);
     else {
         auto_restarting = true;
-        schedule_timer(TICKSPERSEC, delay_timer, seat);
+        schedule_timer(auto_restart*TICKSPERSEC, delay_timer, seat);
     }
 }
 
@@ -892,7 +892,13 @@ int main(int argc, char **argv)
         } else if (!strcmp(p, "-localport-acceptall")) {
             conf_set_bool(conf, CONF_lport_acceptall, true);
         } else if (!strcmp(p, "-auto-restart")) {
-            auto_restart = true;
+            if(argc > 1) {
+                --argc;
+                auto_restart =atoi(*++argv);
+            } else {
+                fprintf(stderr, "plinkx: broken option \"%s\"\n", p);
+                errors = true;
+            }
         } else if (!strcmp(p, "-ping-interval")) {
             if(argc > 1) {
                 --argc;
