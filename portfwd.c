@@ -294,7 +294,7 @@ static void portfwd_idle_check(void *ctx, unsigned long now)
     portfwd_state *ps = (portfwd_state *)ctx;
 
     if(!ps->connections) {
-        if((now - ps->last_time) >= ps->idle_timeout) {
+        if((GETTICKCOUNT() - ps->last_time) >= ps->idle_timeout) {
             portfwdmgr_close_all(ps->portfwdmgr);
             cleanup_exit(0);
             return;
