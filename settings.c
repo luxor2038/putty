@@ -877,6 +877,7 @@ void load_open_settings(settings_r *sesskey, Conf *conf)
         pingsec = gppi_raw(sesskey, "PingIntervalSecs", 0);
         conf_set_int(conf, CONF_ping_interval, pingmin * 60 + pingsec);
     }
+    gppi(sesskey, "PingKeepaliveMax", 0, conf, CONF_ping_keepalive_max);
     gppb(sesskey, "TCPNoDelay", true, conf, CONF_tcp_nodelay);
     gppb(sesskey, "TCPKeepalives", false, conf, CONF_tcp_keepalives);
     gpps(sesskey, "TerminalType", "xterm", conf, CONF_termtype);
@@ -963,6 +964,8 @@ void load_open_settings(settings_r *sesskey, Conf *conf)
     gpps(sesskey, "ProxyTelnetCommand", "connect %host %port\\n",
          conf, CONF_proxy_telnet_command);
     gppi(sesskey, "ProxyLogToTerm", FORCE_OFF, conf, CONF_proxy_log_to_term);
+    gppfile(sesskey, "ProxyKeyfile", conf, CONF_proxy_keyfile);
+    gppb(sesskey, "ProxyConnectionSharing", false, conf, CONF_proxy_ssh_connection_sharing);
     gppmap(sesskey, "Environment", conf, CONF_environmt);
     gpps(sesskey, "UserName", "", conf, CONF_username);
     gppb(sesskey, "UserNameFromEnvironment", false,
