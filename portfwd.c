@@ -67,9 +67,7 @@ static size_t portfwd_sc_write(SshChannel *sc, bool is_stderr,
 static void portfwd_check_close(void *vctx)
 {
     portfwd_connection *conn = (portfwd_connection *)vctx;
-    if (chan_want_close(conn->chan, conn->eof_pfmgr_to_socket,
-                        conn->eof_socket_to_pfmgr))
-        portfwd_conn_free(conn);
+    portfwd_conn_free(conn);
 }
 
 static void portfwd_sc_write_eof(SshChannel *sc)
@@ -88,6 +86,9 @@ static void portfwd_sc_initiate_close(SshChannel *sc, const char *err)
     if(conn->socket) {
         sk_close(conn->socket);
         conn->socket = NULL;
+        conn->eof_pfmgr_to_socket = true;
+
+        queue_toplevel_callback(portfwd_check_close, conn);
     }
 }
 
