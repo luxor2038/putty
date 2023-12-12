@@ -600,15 +600,17 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
         }
     } else {
         do_defaults(NULL, sp->conf);
-        /* In hostname mode, we default to PROT_SSH. This is more useful than
-         * the obvious approach of defaulting to the protocol defined in
-         * Default Settings, because only SSH (ok, and bare ssh-connection)
-         * can be used for this kind of proxy. */
-        conf_set_int(sp->conf, CONF_protocol, PROT_SSH);
-        conf_set_str(sp->conf, CONF_host, proxy_hostname);
-        conf_set_int(sp->conf, CONF_port,
-                     conf_get_int(clientconf, CONF_proxy_port));
     }
+
+    /* In hostname mode, we default to PROT_SSH. This is more useful than
+        * the obvious approach of defaulting to the protocol defined in
+        * Default Settings, because only SSH (ok, and bare ssh-connection)
+        * can be used for this kind of proxy. */
+    conf_set_int(sp->conf, CONF_protocol, PROT_SSH);
+    conf_set_str(sp->conf, CONF_host, proxy_hostname);
+    conf_set_int(sp->conf, CONF_port,
+                    conf_get_int(clientconf, CONF_proxy_port));
+
     const char *proxy_username = conf_get_str(clientconf, CONF_proxy_username);
     if (*proxy_username)
         conf_set_str(sp->conf, CONF_username, proxy_username);
