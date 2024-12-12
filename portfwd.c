@@ -46,7 +46,7 @@ struct portfwd_connection {
 
 static SshChannel *portfwd_lportfwd_open(
     ConnectionLayer *cl, const char *hostname, int port,
-    const char *description, const SocketPeerInfo *pi, Channel *chan);
+    const char *description, const SocketEndpointInfo *pi, Channel *chan);
 
 static const ConnectionLayerVtable portfwd_clvt = {
     .lportfwd_open = portfwd_lportfwd_open,
@@ -106,7 +106,7 @@ static const SshChannelVtable portfwd_scvt = {
 };
 
 
-static void portfwd_plug_log(Plug *plug, PlugLogType type, SockAddr *addr,
+static void portfwd_plug_log(Plug *plug, Socket *s, PlugLogType type, SockAddr *addr,
                             int port, const char *error_msg, int error_code)
 {
     portfwd_connection *conn = container_of(plug, portfwd_connection, plug);
@@ -201,7 +201,7 @@ static void portfwd_connection_establish(void *vctx);
 
 static SshChannel *portfwd_lportfwd_open(
     ConnectionLayer *cl, const char *hostname, int port,
-    const char *description, const SocketPeerInfo *pi, Channel *chan)
+    const char *description, const SocketEndpointInfo *pi, Channel *chan)
 {
     portfwd_state *ps = container_of(cl, portfwd_state, cl);
     portfwd_connection *conn = snew(portfwd_connection);

@@ -70,7 +70,7 @@ int platform_default_i(const char *name, int def)
 
 FontSpec *platform_default_fontspec(const char *name)
 {
-    return fontspec_new("");
+    return fontspec_new_default();
 }
 
 Filename *platform_default_filename(const char *name)
@@ -155,7 +155,7 @@ static char *plink_get_ttymode(Seat *seat, const char *mode)
     do { \
         if (strcmp(mode, ourname) == 0) \
             return get_ttychar(&orig_termios, uxname); \
-    } while(0)
+    } while (0)
 #define GET_BOOL(ourname, uxname, uxmemb, transform) \
     do { \
         if (strcmp(mode, ourname) == 0) { \
@@ -402,8 +402,8 @@ static SeatPromptResult plink_get_userpass_input(Seat *seat, prompts_t *p)
 
 static bool plink_seat_interactive(Seat *seat)
 {
-    return (!*conf_get_str(conf, CONF_remote_cmd) &&
-            !*conf_get_str(conf, CONF_remote_cmd2) &&
+    return (!*conf_get_str_ambi(conf, CONF_remote_cmd, NULL) &&
+            !*conf_get_str_ambi(conf, CONF_remote_cmd2, NULL) &&
             !*conf_get_str(conf, CONF_ssh_nc_host));
 }
 
@@ -419,6 +419,7 @@ static const SeatVtable plink_seat_vt = {
     .notify_remote_exit = nullseat_notify_remote_exit,
     .notify_remote_disconnect = nullseat_notify_remote_disconnect,
     .connection_fatal = plink_connection_fatal,
+    .nonfatal = console_nonfatal,
     .update_specials_menu = nullseat_update_specials_menu,
     .get_ttymode = plink_get_ttymode,
     .set_busy_status = nullseat_set_busy_status,
@@ -584,7 +585,6 @@ static void usage(void)
     printf("            control what happens when a log file already exists\n");
     printf("  -shareexists\n");
     printf("            test whether a connection-sharing upstream exists\n");
-    exit(1);
 }
 
 static void version(void)
@@ -830,20 +830,21 @@ int main(int argc, char **argv)
             }
         }
     }
-    while (--argc) {
-        char *p = *++argv;
-        int ret = cmdline_process_param(p, (argc > 1 ? argv[1] : NULL),
-                                        1, conf);
+    CmdlineArgList *arglist = cmdline_arg_list_from_argv(argc, argv);
+    size_t arglistpos = 0;
+    while (arglist->args[arglistpos]) {
+        CmdlineArg *arg = arglist->args[arglistpos++];
+        CmdlineArg *nextarg = arglist->args[arglistpos];
+        const char *p = cmdline_arg_to_str(arg);
+        int ret = cmdline_process_param(arg, nextarg, 1, conf);
         if (ret == -2) {
             fprintf(stderr,
                     "plink: option \"%s\" requires an argument\n", p);
             errors = true;
         } else if (ret == 2) {
-            --argc, ++argv;
+            arglistpos++;
         } else if (ret == 1) {
             continue;
-        } else if (!strcmp(p, "-batch")) {
-            console_batch_mode = true;
         } else if (!strcmp(p, "-s")) {
             /* Save status to write to conf later. */
             use_subsystem = true;
@@ -854,7 +855,7 @@ int main(int argc, char **argv)
             exit(0);
         } else if (!strcmp(p, "-pgpfp")) {
             pgp_fingerprints();
-            exit(1);
+            exit(0);
         } else if (!strcmp(p, "-o")) {
             if (argc <= 1) {
                 fprintf(stderr,
@@ -927,12 +928,11 @@ int main(int argc, char **argv)
         } else if (*p != '-') {
             strbuf *cmdbuf = strbuf_new();
 
-            while (argc > 0) {
+            while (arg) {
                 if (cmdbuf->len > 0)
                     put_byte(cmdbuf, ' '); /* add space separator */
-                put_dataz(cmdbuf, p);
-                if (--argc > 0)
-                    p = *++argv;
+                put_dataz(cmdbuf, cmdline_arg_to_str(arg));
+                arg = arglist->args[arglistpos++];
             }
 
             conf_set_str(conf, CONF_remote_cmd, cmdbuf->s);
@@ -951,7 +951,10 @@ int main(int argc, char **argv)
         return 1;
 
     if (!cmdline_host_ok(conf) && !portfwd) {
-        usage();
+        fprintf(stderr, "plink: no valid host name provided\n"
+                "try \"plink --help\" for help\n");
+        cmdline_arg_list_free(arglist);
+        return 1;
     }
 
     prepare_session(conf);
@@ -961,11 +964,13 @@ int main(int argc, char **argv)
      */
     cmdline_run_saved(conf);
 
+    cmdline_arg_list_free(arglist);
+
     /*
      * If we have no better ideas for the remote username, use the local
      * one, as 'ssh' does.
      */
-    if (conf_get_str(conf, CONF_username)[0] == '\0') {
+    if (conf_get_str_ambi(conf, CONF_username, NULL)[0] == '\0') {
         char *user = get_username();
         if (user) {
             conf_set_str(conf, CONF_username, user);
